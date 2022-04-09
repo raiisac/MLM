@@ -129,10 +129,63 @@ ggplot(data) +
   theme_bw() 
 ```
 
+## Variance analysis and correlation structure
+
+Figure \@ref(fig:EDAvar) shows that the variance is larger for the neuro-psychiatric patients (the smallest group).
 
 
+```{r EDAvar, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "Error bars with 95% confidence intervals."}
+datasummary <- data %>%
+  group_by(NEURO, time) %>%
+  summarize(mean = mean(mmse),
+            var = var(mmse),
+            n = n(),
+            lci95 = mean - qnorm(.975)*sqrt(var)/sqrt(n),
+            uci95 = mean + qnorm(.975)*sqrt(var)/sqrt(n)
+            ) %>%
+  ungroup()
+ggplot(datasummary) + 
+  geom_errorbar(aes(x = time, ymin = lci95, ymax = uci95)) +
+  geom_line(aes(x = time, y = mean)) +
+  facet_wrap(vars(as.factor(NEURO)), nrow = 1) +
+  ylim(0, 31) +
+  theme_bw() 
+
+A <- data %>% dplyr::select(id, time, mmse) %>%
+  pivot_wider(names_from = id, values_from = mmse) %>%
+  dplyr::select(-time) %>%
+  as.data.frame()
+```
+
+```{r intraclasscorrelation, include = FALSE, echo =TRUE, message = FALSE, warning = FALSE}
+library(psych)
+ICC(A)
+library("irr")
+icc(A, model = "twoway",
+  type = "agreement", unit = "single")
+library('irrNA')
+i <- iccNA(A)
+```
+
+## Conclusion exploratory analysis
+
+The exploratory analysis has shows that the pattern of mmse over time is likely not constant or even linear. One might attampt quadratic or logaritmic transformations of time to accomodate this. Both the level (intercept) of mmse differs quite a lot, depending on  neuro-psychiatric status, housing and age.
+
+There seems to be high intraclass correlation???
 
 # Methodology and results
+
+This section, gradually develops a statistical model that seems to fit the data best. It starts with a simple model where only limited covariates are included in  \@ref(M1)
+
+## A simple model{#M1}
+
+
+2.Fit a linear mixed model assuming a linear evolution for the response of every subject, on a log-scale for
+time (i.e., use log(t) as ‘time scale’). Allow for subject-specific intercepts as well as slopes. Compare the
+average evolution of the two neuro groups. Interpret all estimated parameters.
+3. Estimate the random effects, and produce a scatterplot of the estimated slopes versus the estimated
+intercepts.
+4.
 
 
 # Conclusion
