@@ -1,0 +1,113 @@
+---
+title: "Concepts of multilevel, longitudinal, and mixed models: Group 3"
+author: 
+  - "Robrecht Van Der Bauwhede"
+  - "Renée Blanckaert Group"
+  - "Charlotte Vercammen Group"
+  - "Raïsa Carmen"
+date: "9-4-2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(kableExtra)
+library(here)
+library(haven) #to read sas data
+library(lme4)# http://lme4.r-forge.r-project.org/book/
+
+knitr::opts_chunk$set(echo = TRUE)
+
+data <- read_sas(sprintf("%s/data/mmse.sas7bdat",here())) %>%
+  mutate(id = as.factor(id),
+         NEURO = recode_factor(as.factor(NEURO), "0" = "not neuro-psychiatric", 
+                              "1" = "neuro-psychiatric"),
+         housing = recode_factor(as.factor(housing), "1" = "alone",
+                                 "2" = "with family or partner", 
+                                 "3" = "nursing home")) 
+
+```
+
+# Introduction
+The data set results from a longitudinal observational study, the aim of which is to
+study the post-operative evolution of the cognitive status of elderly hipfracture patients and their pre-operative
+cognitive status, and to study the effects of housing situation and age on these evolutions.
+The physical ability is measured using the MMSE (Mini Mental State Examination) score, with values between 0
+and 30, where low values correspond to a bad cognitive condition, while high scores correspond to high cognitive
+condition of the patient. The pre-operative cognitive status is measured through the so-called ‘neuro-status’
+which is a binary indicator for being neuro-psychiatric.
+
+- id: patient identification number
+- age: age of the patient at entry
+- neuro: neuro-psychiatric status of the patient (1: neuro-psychiatric, 0: not neuro-psychiatric)
+- mmse: MMSE score
+- time: day after operation at which the MMSE score has been measured (1, 3, 5, 8, or 12)
+- housing: the housing situation prior to the hip fracture (1: alone, 2: with family or partner, 3: nursing
+home)
+
+
+# Data exploration
+
+Looking at the completeness of the data, It can be observed that `r n_distinct(data[is.na(data$housing),"id"])` persons' housing situation is unknown. Additionally, there was some dropout over time as show in Table \@ref(tab: EDA_dropout).
+
+```{r EDA_dropout, echo = F}
+data %>% group_by(time) %>%
+  summarize(nb = n_distinct(id),
+            avgage = mean(age),
+            avgneuro = 100*mean(NEURO == "neuro-psychiatric"),
+            avgalone = 100*mean(!is.na(housing) & housing == "alone"),
+            avgfp = 100*mean(!is.na(housing) & housing == "with family or partner"),
+            avgnurse = 100*mean(!is.na(housing) & housing == "nursing home"),
+            avgna = 100*mean(is.na(housing))) %>%
+  ungroup() %>%
+  mutate(return = ifelse(time == 3,
+                            sum(!(unlist(unique(data[data$time == 3, 'id'])) %in% unlist(unique(data[data$time == 1, 'id'])))),
+                            ifelse(time == 5,
+                                   sum(!(unlist(unique(data[data$time == 5, 'id'])) %in% unlist(unique(data[data$time == 3, 'id'])))), 
+                                   ifelse(time == 8,
+                                          sum(!(unlist(unique(data[data$time == 8, 'id'])) %in% unlist(unique(data[data$time == 5, 'id'])))),
+                                          ifelse(time == 12,
+                                                 sum(!(unlist(unique(data[data$time == 15, 'id'])) %in% unlist(unique(data[data$time == 12, 'id'])))),
+                                                 0)))),
+         dropout = lag(nb,1) - nb + return) %>%
+  replace_na(list(dropout = 0)) %>% 
+  dplyr::select(time, nb, return, dropout, avgage, avgneuro, avgalone, avgfp, 
+                avgnurse, avgna) %>%
+  kable(col.names = c("Time", "Number", "Return", "Dropout", "Mean age", 
+                      "% neuro-psychiatric", "%alone", "%family/ partner", 
+                      "%nursing home", "%NA"),
+        digits = 2,
+        caption = "Dropout and patient characteristics over time.",
+        booktabs = T) %>%
+  kable_styling() %>%
+  add_header_above(c(" " = 6, "Housing" = 4)) %>%
+  column_spec(1:5, width = "0.8cm") %>%
+  column_spec(6, width = "1.4cm") %>%
+  column_spec(7, width = "1.2cm") %>%
+  column_spec(8:9, width = "1.45cm") %>%
+  column_spec(10, width = "0.8cm") 
+```
+
+
+```{r EDA_MMSE_time, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "MMSE over time for all patient profiles, including smoothed curves."}
+ggplot(data) + 
+  geom_point(aes(x = time, y = mmse, color = housing, shape = NEURO)) +
+  geom_smooth(aes(x = time, y = mmse, color = housing, linetype = NEURO),
+              alpha = 0) +
+  ylim(0, 31) +
+  theme_bw()
+```
+
+
+
+# Methodology and results
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+ 
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Conclusion
+ 
