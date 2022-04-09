@@ -6,7 +6,7 @@ author:
   - "Charlotte Vercammen Group"
   - "Raïsa Carmen"
 date: "9-4-2022"
-output: pdf_document
+output: bookdown::pdf_document2
 ---
 
 ```{r setup, include=FALSE}
@@ -48,9 +48,9 @@ home)
 
 # Data exploration
 
-Looking at the completeness of the data, It can be observed that `r n_distinct(data[is.na(data$housing),"id"])` persons' housing situation is unknown. Additionally, there was some dropout over time as show in Table \@ref(tab: EDA_dropout).
+Considering the completeness of the data, it can be observed that `r n_distinct(data[is.na(data$housing),"id"])` persons' housing situation is unknown. Additionally, there was some dropout over time as show in Table \@ref(tab:EDAdropout). The column "Nb" shows the number of respondent at each time instance. The column "Return" shows the number of respondents that participated at time $t$ while they did not participate at time $t-1$; there is, for instance, one respondent that did not participate at $time = 1$ while he did participate at $time = 3$. The column "Dropout" shows the number of respondents that did not participate at time $t$ while they did participate at time $t-1$. It can be seen than many drop out at $time = 12$. The other columns show how the patient characteristics change over time as patients are added or lost from the study. Overall, there is not much variation which might indicate that the dropout of patients is not related to MMSE or patient characteristics. We will thus assume dropout is completely random.
 
-```{r EDA_dropout, echo = F}
+```{r EDAdropout, echo = F}
 data %>% group_by(time) %>%
   summarize(nb = n_distinct(id),
             avgage = mean(age),
@@ -73,7 +73,7 @@ data %>% group_by(time) %>%
   replace_na(list(dropout = 0)) %>% 
   dplyr::select(time, nb, return, dropout, avgage, avgneuro, avgalone, avgfp, 
                 avgnurse, avgna) %>%
-  kable(col.names = c("Time", "Number", "Return", "Dropout", "Mean age", 
+  kable(col.names = c("Time", "Nb", "Return", "Dropout", "Mean age", 
                       "% neuro-psychiatric", "%alone", "%family/ partner", 
                       "%nursing home", "%NA"),
         digits = 2,
@@ -89,25 +89,51 @@ data %>% group_by(time) %>%
 ```
 
 
-```{r EDA_MMSE_time, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "MMSE over time for all patient profiles, including smoothed curves."}
+Figure \@ref(fig:EDAMMSEtime) shows the average evolution of MMSE over time (Loess curves) for groups of patients with different housing and/or neuro-psychiatric status. Patients that are not neuro-psychiatric seem to have higherMMSE that stays reasonably constant over time (except for nursing home patients). MMSE seems to go up over time for nursing home patients (but they are the smallest group), and down for neuro-spychiatric patients that live with their family or partner (or unknown housing). MMSE for neuro-psychiatric patients that live alone might have a quadratic evolution over time. 
+
+```{r EDAMMSEtime, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "MMSE over time for all patient profiles, including smoothed curves."}
 ggplot(data) + 
   geom_point(aes(x = time, y = mmse, color = housing, shape = NEURO)) +
   geom_smooth(aes(x = time, y = mmse, color = housing, linetype = NEURO),
-              alpha = 0) +
+              alpha = 0, method = "loess") +
   ylim(0, 31) +
   theme_bw()
 ```
+
+Figure \@ref(fig:EDApatientprofiles) shows all patient profiles.  There is quite a lot of variation between the patients' evolution. The non-psychiatric patients are also under-represented (except in the nursing home group).
+
+```{r EDApatientprofiles, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "Patient profiles of MMSE over time."}
+A <- data %>% group_by(housing, NEURO) %>%
+  summarize(n = n_distinct(id)) %>%
+  filter(!is.na(housing)) %>%
+  ungroup() %>%
+  mutate(label = sprintf("n = %.0f",n))
+ggplot() + 
+  geom_line(data = data[!is.na(data$housing),],
+            aes(x = time, y = mmse, group = id)) +
+  geom_text(data = A, x = 10, y = 32, aes(label = label)) +
+  facet_grid(rows = vars(NEURO), cols = vars(housing)) +
+  ylim(0, 35) +
+  scale_x_continuous(breaks = c(1,3,5,8,12), labels = c(1,3,5,8,12)) +
+  theme_bw() 
+```
+
+The last variable that is explored, is the age. The loess curves in Figure \@ref(fig:EDAage) show that age might be negatively correlated with MMSE.
+
+```{r EDAage, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "MMSE versus age. Facets show the time instances."}
+ggplot(data) + 
+  geom_point(aes(x = age, y = mmse, color = housing, shape = NEURO)) +
+  geom_smooth(aes(x = age, y = mmse)) +
+  facet_wrap(vars(as.factor(time)), nrow = 2) +
+  ylim(0, 31) +
+  theme_bw() 
+```
+
 
 
 
 # Methodology and results
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
- 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 # Conclusion
  
