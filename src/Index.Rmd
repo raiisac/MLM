@@ -15,7 +15,8 @@ library(kableExtra)
 library(here)
 library(haven) #to read sas data
 library(lme4)# http://lme4.r-forge.r-project.org/book/
-
+library(nlme)
+library(cowplot)
 knitr::opts_chunk$set(echo = TRUE)
 
 data <- read_sas(sprintf("%s/data/mmse.sas7bdat",here())) %>%
@@ -151,13 +152,28 @@ ggplot(datasummary) +
   ylim(0, 31) +
   theme_bw() 
 
+
+```
+
+Figure \@ref(fig:EDAvarmean) shows that there seems to be an inverse relationship between the mean mmse and the variance for patients with either neuro-psychiatric status.
+
+
+
+```{r EDAvarmean, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "Error bars with 95% confidence intervals."}
+p1 <- ggplot(datasummary) + 
+  geom_point(aes(x = mean, y = var, color = as.factor(time), shape = NEURO)) +
+  xlab('Mean mmse') + ylab("Variance mmse") +
+  scale_color_discrete(name = "time") +
+  theme_bw() 
+```
+
+
+```{r intraclasscorrelation, include = FALSE, echo =TRUE, message = FALSE, warning = FALSE}
 A <- data %>% dplyr::select(id, time, mmse) %>%
   pivot_wider(names_from = id, values_from = mmse) %>%
   dplyr::select(-time) %>%
   as.data.frame()
-```
 
-```{r intraclasscorrelation, include = FALSE, echo =TRUE, message = FALSE, warning = FALSE}
 library(psych)
 ICC(A)
 library("irr")
@@ -169,7 +185,7 @@ i <- iccNA(A)
 
 ## Conclusion exploratory analysis
 
-The exploratory analysis has shows that the pattern of mmse over time is likely not constant or even linear. One might attampt quadratic or logaritmic transformations of time to accomodate this. Both the level (intercept) of mmse differs quite a lot, depending on  neuro-psychiatric status, housing and age.
+The exploratory analysis has shows that the pattern of mmse over time is likely not constant or even linear. One might attempt quadratic, cubic, or logarithmic transformations of time to accommodate this. Both the level (intercept) of mmse differs quite a lot, depending on  neuro-psychiatric status, housing and age.
 
 There seems to be high intraclass correlation???
 
@@ -178,7 +194,81 @@ There seems to be high intraclass correlation???
 This section, gradually develops a statistical model that seems to fit the data best. It starts with a simple model where only limited covariates are included in  \@ref(M1)
 
 ## A simple model{#M1}
+This first, simple model will assume a linear relationship between mmse and $log(time)$ for each patient. The model allows for subject-specific intercepts and slopes and the neuro-psychiatric status is the only additional explanatory variable that is taken into account. 
 
+```{r simplelinear, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+#A simple linear model
+fm0 <- lm(mmse ~ time + NEURO + NEURO * time, data = data)
+par(mfrow = c(2, 3))
+data %>% mutate(residuals = resid(fm0),
+                     fitted = fitted(fm0)) %>%
+  ggplot() + geom_line(aes(x = time, y = residuals, group = id)) + 
+  facet_grid(rows = vars(housing), cols = vars(NEURO)) +
+  ylab('residuals') + 
+  theme_bw()
+#If model is appropriate, residuals should fluctuate randomly around zero. That is clearly not so.
+
+data %>% mutate(residuals = resid(fm0),
+                     fitted = fitted(fm0)) %>%
+  ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
+  ylab('fitted value') + 
+  theme_bw()
+```
+
+
+```{r simplemixed, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+#only random intercept
+data$logtime <- log(data$time)
+fm1 <- lmer(mmse ~ logtime + NEURO + NEURO * logtime + (1|id), data = data)
+data %>% mutate(residuals = resid(fm1),
+                     fitted = fitted(fm1)) %>%
+  ggplot() + geom_line(aes(x = time, y = residuals, group = id)) + 
+  facet_grid(rows = vars(housing), cols = vars(NEURO)) +
+  ylab('residuals') + 
+  theme_bw()
+#There already seems to be less of a pattern
+data %>% mutate(residuals = resid(fm1),
+                     fitted = fitted(fm1)) %>%
+  ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
+  ylab('fitted value') + 
+  theme_bw()
+```
+
+```{r simplemixed2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+#random intercept and slope
+fm2 <- lmer(mmse ~ logtime + NEURO + NEURO * logtime + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
+#isSingular(fm2) #TRUE if time is used in stead of logtime!
+
+summary(fm2)
+```
+```{r simplemixedresiduals, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.caption = "Residuals and time."}
+data %>% mutate(residuals = resid(fm2),
+                     fitted = fitted(fm2)) %>%
+  ggplot() + geom_line(aes(x = time, y = residuals, group = id)) + 
+  facet_grid(rows = vars(housing), cols = vars(NEURO)) +
+  ylab('residuals') + 
+  theme_bw()
+#There already seems to be less of a pattern
+```
+
+```{r simplemixedfitted, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.caption = "Fitted values plotted against log(time) and time."}
+p1 <- data %>% mutate(residuals = resid(fm2),
+                     fitted = fitted(fm2)) %>%
+  ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, color = NEURO)) +
+  ylab('fitted value') + 
+  theme_bw() +
+  xlab("log(time)")
+p2 <- data %>% mutate(residuals = resid(fm2),
+                     fitted = fitted(fm2)) %>%
+  ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
+  ylab('fitted value') + 
+  theme_bw()
+p <- plot_grid(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"), nrow = 1)
+legend <- get_legend(
+  p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+plot_grid(p,legend,rel_widths = c(3,1))
+```
 
 2.Fit a linear mixed model assuming a linear evolution for the response of every subject, on a log-scale for
 time (i.e., use log(t) as ‘time scale’). Allow for subject-specific intercepts as well as slopes. Compare the
