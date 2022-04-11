@@ -392,12 +392,23 @@ plot_grid(p,legend,rel_widths = c(3,1))
 ## A model with a dichotomized dependent variable
 Lastly, a model is tested where mmse is dichotomized using a median split; all mmse scores equal to or below the median (`r median(data$mmse)`) are cetagorized as "Low" and all mmse scores over `r median(data$mmse)` are categorized as "High". It should be noted that the literature warns against this technique as it is rarely justified from either a conceptual or statistical perspective [@maccallum2002practice].
 
-```{r mixeddictests, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+```{r mixeddictests, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
 data$bmmse <- factor(as.factor(ifelse(data$mmse <= median(data$mmse),"Low","High")), levels = c("Low","High"))
 fm6 <- glmer(bmmse ~ logtime + NEURO + NEURO * logtime + agecenter + housing + (1 + logtime|id), 
-             data = data, family = binomial(link = "logit")) #boundary (singular) fit: see ?isSingular
-#isSingular(fm2) #TRUE if time is used in stead of logtime!
-sfm5 <- summary(fm5)
+             data = data, family = binomial(link = "logit")) #In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  #Model failed to converge with max|grad| = 0.187143 (tol = 0.002, component 1)
+sfm6 <- summary(fm6)
+```
+
+In this model, nothing is significant. It seems we've indeed lost a lot of information by dichotomizing the dependent variable.
+```{r mixeddic, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm6$coefficients %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing, dichotomized dependent variable",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddicvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm6$varcor %>% kable(caption = "Random effects",
+                            booktabs = TRUE, digits = 3)
 ```
 
 # Conclusion
