@@ -5,7 +5,6 @@ author:
   - "Renée Blanckaert Group"
   - "Charlotte Vercammen Group"
   - "Raïsa Carmen"
-date: "9-4-2022"
 output: bookdown::pdf_document2
 ---
 
@@ -15,8 +14,10 @@ library(kableExtra)
 library(here)
 library(haven) #to read sas data
 library(lme4)# http://lme4.r-forge.r-project.org/book/
+library(lmerTest)# calculates pvalues for the models
 library(nlme)
 library(cowplot)
+
 knitr::opts_chunk$set(echo = TRUE)
 
 data <- read_sas(sprintf("%s/data/mmse.sas7bdat",here())) %>%
@@ -135,7 +136,7 @@ ggplot(data) +
 Figure \@ref(fig:EDAvar) shows that the variance is larger for the neuro-psychiatric patients (the smallest group).
 
 
-```{r EDAvar, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "Error bars with 95% confidence intervals."}
+```{r EDAvar, echo = FALSE, message= FALSE, warning = FALSE, fig.cap = "Error bars with 95 percent confidence intervals."}
 datasummary <- data %>%
   group_by(NEURO, time) %>%
   summarize(mean = mean(mmse),
@@ -234,14 +235,29 @@ data %>% mutate(residuals = resid(fm1),
   theme_bw()
 ```
 
-```{r simplemixed2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+```{r simplemixedmodel, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
 #random intercept and slope
-fm2 <- lmer(mmse ~ logtime + NEURO + NEURO * logtime + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
+fm2 <- lmerTest::lmer(mmse ~ logtime + NEURO + NEURO * logtime + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
 #isSingular(fm2) #TRUE if time is used in stead of logtime!
-
-summary(fm2)
+sfm2 <- summary(fm2)
 ```
-```{r simplemixedresiduals, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.caption = "Residuals and time."}
+Table \@ref(tab:simplemixed2) shows the fixed effects for the simple model where time is on a log scale, with a random intercept and slope. For the average not-neuro-psychiatric patient, the slope is positive and the intercept is at `r sfm2$coefficients[1,1]`. For the average neuro-psychiatric patients, the intercept is at `r sfm2$coefficients[1,1] + sfm2$coefficients[3,1]` and the slope is less steep (as shown in Figure \@ref(fig:simplemixedfitted)) but the difference in slope is not significant. 
+
+Figure \@ref(fig:simplemixedresiduals) shows that the model performs reasonably well; there are no real remaining trends (all curves going up or down) and most residuals seem to randomly fluctuate around zero (no profiles are consistently above or below zero). There are, however, some individuals whose residuals are far larger (both positive and negative) than others.
+
+Figure \@ref(fig:simplemixedscatter) shows the inverse relationship between the slope and the intercept: the higher the intercept, the lower the slope for each of the neuro-psychiatric statuses. This makes sense because MMSE is not a real continuous variable. It has a maximum value of 30 which means that there is less room for an increase in MMSE (meaning a lower slope) if the starting value (intercept) for MMSE is already high. 
+
+```{r simplemixed2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm2$coefficients %>% kable(caption = "Fixed effects for the simple model with random intercept and slope",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r simplemixedvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm2$varcor %>% kable(caption = "Random effects",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r simplemixedresiduals, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Residuals and time."}
 data %>% mutate(residuals = resid(fm2),
                      fitted = fitted(fm2)) %>%
   ggplot() + geom_line(aes(x = time, y = residuals, group = id)) + 
@@ -251,32 +267,139 @@ data %>% mutate(residuals = resid(fm2),
 #There already seems to be less of a pattern
 ```
 
-```{r simplemixedfitted, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.caption = "Fitted values plotted against log(time) and time."}
+```{r simplemixedfitted, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Fitted values plotted against log(time) and time. Dashed, thicker lines are the predicted trends based on the fixed effects only, for each group."}
+sfm2avg <- data.frame(NEURO = levels(data$NEURO),
+                      intercept = c(sfm2$coefficients[1,1], 
+                                    sfm2$coefficients[1,1] + sfm2$coefficients[3,1]),
+                      slope = c(sfm2$coefficients[2,1], 
+                                sfm2$coefficients[2,1] + sfm2$coefficients[4,1]))
+sfm2avgline <- data.frame(time = unique(data$time)) %>%
+  mutate(logtime = log(time),
+         `not neuro-psychiatric` = sfm2avg$intercept[1] + logtime * sfm2avg$slope[1],
+         `neuro-psychiatric` = sfm2avg$intercept[2] + logtime * sfm2avg$slope[2]) %>%
+  pivot_longer(cols = 3:4, names_to = "NEURO", values_to = "fitted") 
 p1 <- data %>% mutate(residuals = resid(fm2),
                      fitted = fitted(fm2)) %>%
-  ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, color = NEURO)) +
+  ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, 
+                           color = NEURO)) +
+  geom_abline(data = sfm2avg, aes(slope = slope, intercept = intercept, 
+                                  color = NEURO), 
+              size = 2, linetype = 2) +
   ylab('fitted value') + 
   theme_bw() +
   xlab("log(time)")
 p2 <- data %>% mutate(residuals = resid(fm2),
                      fitted = fitted(fm2)) %>%
   ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
+  geom_line(data = sfm2avgline, aes(x = time, y = fitted, color = NEURO), 
+            size = 2, linetype = 2) +
   ylab('fitted value') + 
   theme_bw()
-p <- plot_grid(p1 + theme(legend.position="none"), p2 + theme(legend.position="none"), nrow = 1)
+p <- plot_grid(p1 + theme(legend.position = "none"), 
+               p2 + theme(legend.position = "none"), nrow = 1)
 legend <- get_legend(
   p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
 )
 plot_grid(p,legend,rel_widths = c(3,1))
 ```
 
-2.Fit a linear mixed model assuming a linear evolution for the response of every subject, on a log-scale for
-time (i.e., use log(t) as ‘time scale’). Allow for subject-specific intercepts as well as slopes. Compare the
-average evolution of the two neuro groups. Interpret all estimated parameters.
-3. Estimate the random effects, and produce a scatterplot of the estimated slopes versus the estimated
-intercepts.
-4.
+```{r simplemixedscatter, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Scatterplot of the fitted intercept and slopes (log(time))."}
+data %>% group_by(id) %>%
+  summarize(NEURO = first(NEURO)) %>%
+  ungroup() %>%
+  cbind(coef(fm2)$id) %>%
+  mutate(intercept = `(Intercept)` + (NEURO == "neuro-psychiatric")*`NEUROneuro-psychiatric`,
+         slope = logtime + (NEURO == "neuro-psychiatric")*`logtime:NEUROneuro-psychiatric`) %>%
+  ggplot() + geom_point(aes(x = intercept, y = slope, color = NEURO)) +
+  theme_bw()
+```
 
+## Model with housing and age   
+```{r mixedcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+#random intercept and slope
+data$agecenter <- data$age - mean(data$age)
+fm3 <- lmerTest::lmer(mmse ~ logtime + NEURO + NEURO * logtime + agecenter + housing + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
+#isSingular(fm2) #TRUE if time is used in stead of logtime!
+sfm3 <- summary(fm3)
+```
+Before adding age to the model, it is centered around the mean (mean age is `r round(mean(data$age), digits = 2)`).
+Table \@ref(tab:mixedcov2) shows the results for the fixed effects. Non neuro-phsychiatric patients that are `r round(mean(data$age), digits = 2)` years old and live alone are the baseline and have the highest intercept (`r round(sfm3$coefficients[1,1], digits = 2)`). For each increase in age of one year, the intercept is estimated to be `r sfm3$coefficients[1,4]` lower and neuro-psychiatric patients still have lower intercept and slope. Patients that live with family or partner have slightly lower intercept (not significant) than those who live alone. Patients that live in a nursing home have a significantly lower intercept than those who live alone. There is no significant difference in slope between neuro-psychiatric and non neuro-psychiatric patients.
+
+```{r mixedcov2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm3$coefficients %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixedcovvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm3$varcor %>% kable(caption = "Random effects",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixedcovtests, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+#random intercept and slope, time*housing added
+fm4 <- lmerTest::lmer(mmse ~ logtime + NEURO + housing * logtime + agecenter + housing + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
+#isSingular(fm2) #TRUE if time is used in stead of logtime!
+sfm4 <- summary(fm4)
+fm5 <- lmerTest::lmer(mmse ~ logtime + NEURO + agecenter * logtime + agecenter + housing + (1 + logtime|id), data = data) #boundary (singular) fit: see ?isSingular
+#isSingular(fm2) #TRUE if time is used in stead of logtime!
+sfm5 <- summary(fm5)
+```
+
+
+```{r mixedcovfitted, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Fitted values plotted against log(time) and time. Dashed, thicker lines are the predicted trends based on the fixed effects only, for an average-aged patient in each group.", fig.height = 15, fig.width = 10}
+sfm3avg <- expand_grid(housing = levels(data$housing), 
+                       NEURO = levels(data$NEURO)) %>%
+  mutate(intercept = sfm3$coefficients[1,1] + 
+           ifelse(NEURO == "neuro-psychiatric", sfm3$coefficients[3,1], 0) +
+           ifelse(housing == "with family or partner", sfm3$coefficients[5,1], 
+                  ifelse(housing == "nursing home", sfm3$coefficients[6,1], 0)),
+         slope = sfm3$coefficients[2,1] + 
+           ifelse(NEURO == "neuro-psychiatric", sfm3$coefficients[7,1], 0))
+sfm3avgline <- expand_grid(time = unique(data$time), 
+                           housing = levels(data$housing), 
+                           NEURO = levels(data$NEURO)) %>%
+  mutate(logtime = log(time)) %>%
+  left_join(sfm3avg) %>%
+  mutate(fitted  = intercept + logtime*slope)
+p1 <- data %>% mutate(residuals = resid(fm2),
+                     fitted = fitted(fm2)) %>%
+  ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, 
+                           color = housing)) +
+  geom_line(data = sfm3avgline, aes(x = logtime, y = fitted, 
+                           color = housing), 
+              size = 2, linetype = 2) +
+  facet_wrap(vars(NEURO), nrow = 2) +
+  ylab('fitted value') + 
+  theme_bw() +
+  xlab("log(time)")
+p2 <- data %>% mutate(residuals = resid(fm2),
+                     fitted = fitted(fm2)) %>%
+  ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = housing)) +
+  geom_line(data = sfm3avgline, aes(x = time, y = fitted, color = housing), 
+            size = 2, linetype = 2) +
+  facet_wrap(vars(NEURO), nrow = 2) +
+  ylab('fitted value') + 
+  theme_bw()
+p <- plot_grid(p1 + theme(legend.position = "none"), 
+               p2 + theme(legend.position = "none"), nrow = 1)
+legend <- get_legend(
+  p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
+)
+plot_grid(p,legend,rel_widths = c(3,1))
+```
+
+
+## A model with a dichotomized dependent variable
+Lastly, a model is tested where mmse is dichotomized using a median split; all mmse scores equal to or below the median (`r median(data$mmse)`) are cetagorized as "Low" and all mmse scores over `r median(data$mmse)` are categorized as "High". It should be noted that the literature warns against this technique as it is rarely justified from either a conceptual or statistical perspective [@maccallum2002practice].
+
+```{r mixeddictests, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+data$bmmse <- factor(as.factor(ifelse(data$mmse <= median(data$mmse),"Low","High")), levels = c("Low","High"))
+fm6 <- glmer(bmmse ~ logtime + NEURO + NEURO * logtime + agecenter + housing + (1 + logtime|id), 
+             data = data, family = binomial(link = "logit")) #boundary (singular) fit: see ?isSingular
+#isSingular(fm2) #TRUE if time is used in stead of logtime!
+sfm5 <- summary(fm5)
+```
 
 # Conclusion
  
+# Bibliography
