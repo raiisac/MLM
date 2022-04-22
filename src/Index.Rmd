@@ -5,7 +5,9 @@ author:
   - "Renée Blanckaert Group"
   - "Charlotte Vercammen Group"
   - "Raïsa Carmen"
-output: bookdown::pdf_document2
+output: 
+  bookdown::pdf_document2:
+    keep_tex:  true
 ---
 
 ```{r setup, include=FALSE}
@@ -253,7 +255,18 @@ sfm2$coefficients %>% kable(caption = "Fixed effects for the simple model with r
 ```
 
 ```{r simplemixedvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-sfm2$varcor %>% kable(caption = "Random effects",
+sfm2$varcor[1]$id[1:2,] %>% kable(caption = "variance-coviarance matrix.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r simplemixedstddev, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor <- lapply(sfm2$varcor, attributes)
+varcor$id$stddev %>% kable(caption = "Standard deviations.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r simplemixedcorrelation, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor$id$correlation %>% kable(caption = "Correlations.",
                             booktabs = TRUE, digits = 3)
 ```
 
@@ -330,10 +343,22 @@ sfm3$coefficients %>% kable(caption = "Fixed effects for a model with random int
                             booktabs = TRUE, digits = 3)
 ```
 
-```{r mixedcovvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-sfm3$varcor %>% kable(caption = "Random effects",
+```{r mixedvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm3$varcor[1]$id[1:2,] %>% kable(caption = "variance-coviarance matrix.",
                             booktabs = TRUE, digits = 3)
 ```
+
+```{r mixedstddev, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor <- lapply(sfm3$varcor, attributes)
+varcor$id$stddev %>% kable(caption = "Standard deviations.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixedcorrelation, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor$id$correlation %>% kable(caption = "Correlations.",
+                            booktabs = TRUE, digits = 3)
+```
+
 
 ```{r mixedcovtests, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
 #random intercept and slope, time*housing added
@@ -390,6 +415,8 @@ plot_grid(p,legend,rel_widths = c(3,1))
 
 
 ## A model with a dichotomized dependent variable
+
+### Median split
 Lastly, a model is tested where mmse is dichotomized using a median split; all mmse scores equal to or below the median (`r median(data$mmse)`) are cetagorized as "Low" and all mmse scores over `r median(data$mmse)` are categorized as "High". It should be noted that the literature warns against this technique as it is rarely justified from either a conceptual or statistical perspective [@maccallum2002practice].
 
 ```{r mixeddictests, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
@@ -402,12 +429,57 @@ sfm6 <- summary(fm6)
 
 In this model, nothing is significant. It seems we've indeed lost a lot of information by dichotomizing the dependent variable.
 ```{r mixeddic, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-sfm6$coefficients %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing, dichotomized dependent variable",
+sfm6$coefficients %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing, dichotomized dependent variable (median split)",
                             booktabs = TRUE, digits = 3)
 ```
 
 ```{r mixeddicvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-sfm6$varcor %>% kable(caption = "Random effects",
+sfm6$varcor[1]$id[1:2,] %>% kable(caption = "variance-coviarance matrix.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddicstddev, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor <- lapply(sfm6$varcor, attributes)
+varcor$id$stddev %>% kable(caption = "Standard deviations.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddiccorrelation, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor$id$correlation %>% kable(caption = "Correlations.",
+                            booktabs = TRUE, digits = 3)
+```
+
+### Dichotomized at 25
+The maximum score for the MMSE is 30. A score of 25 or higher is classed as normal. If the score is below 24, the result is usually considered to be abnormal, indicating possible cognitive impairment.
+
+
+```{r mixeddictests2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+data$bmmse <- factor(as.factor(ifelse(data$mmse <= 24,"abnormal","normal")), levels = c("abnormal","normal"))
+fm7 <- glmer(bmmse ~ logtime + NEURO + NEURO * logtime + agecenter + housing + (1 + logtime|id), 
+             data = data, family = binomial(link = "logit")) #In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  #Model failed to converge with max|grad| = 0.428569 (tol = 0.002, component 1)
+sfm7 <- summary(fm7)
+```
+
+In this model, nothing is significant. It seems we've indeed lost a lot of information by dichotomizing the dependent variable.
+```{r mixeddic2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm7$coefficients %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing, dichotomized dependent variable (split at 25).",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddicvarcov2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+sfm7$varcor[1]$id[1:2,] %>% kable(caption = "variance-coviarance matrix.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddicstddev2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor <- lapply(sfm7$varcor, attributes)
+varcor$id$stddev %>% kable(caption = "Standard deviations.",
+                            booktabs = TRUE, digits = 3)
+```
+
+```{r mixeddiccorrelation2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
+varcor$id$correlation %>% kable(caption = "Correlations.",
                             booktabs = TRUE, digits = 3)
 ```
 
