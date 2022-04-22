@@ -2,8 +2,8 @@
 title: "Concepts of multilevel, longitudinal, and mixed models: Group 3"
 author: 
   - "Robrecht Van Der Bauwhede"
-  - "Renée Blanckaert Group"
-  - "Charlotte Vercammen Group"
+  - "Renée Blanckaert"
+  - "Charlotte Vercammen"
   - "Raïsa Carmen"
 output: 
   bookdown::pdf_document2:
