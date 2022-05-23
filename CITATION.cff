@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Blanckaert
+    given-names: Renée
+  - family-names: Carmen
+    given-names: Raïsa
+  - family-names: Van Der Bauwhede, Charlotte Vercammen
+    given-names: Robrecht
+  - family-names: Vercammen
+    given-names: Charlotte
+
+title: "Concepts of multilevel, longitudinal, and mixed models: Group 3"
