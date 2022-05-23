@@ -21,6 +21,7 @@ library(lmerTest)# calculates pvalues for the models
 library(nlme)
 library(cowplot)
 library(lattice)
+library(ggeffects)
 
 knitr::opts_chunk$set(echo = TRUE)
 
@@ -92,6 +93,14 @@ data %>% group_by(time) %>%
   column_spec(7, width = "1.2cm") %>%
   column_spec(8:9, width = "1.45cm") %>%
   column_spec(10, width = "0.8cm") 
+```
+
+
+```{r EDAmmseHist, echo = F}
+data %>% ggplot() + geom_histogram(aes(x = mmse, fill = NEURO), 
+                                  position = position_stack(reverse = TRUE),
+                                  bins = 15) +
+  theme_bw() + ylab("Number of subjects") + xlab("mmse score")
 ```
 
 
@@ -294,13 +303,21 @@ sfm2avgline <- data.frame(time = unique(data$time)) %>%
          `not neuro-psychiatric` = sfm2avg$intercept[1] + logtime * sfm2avg$slope[1],
          `neuro-psychiatric` = sfm2avg$intercept[2] + logtime * sfm2avg$slope[2]) %>%
   pivot_longer(cols = 3:4, names_to = "NEURO", values_to = "fitted") 
+sfm2avgsubject <- data %>% mutate(residuals = resid(fm2),
+                                  fitted = fitted(fm2)) %>%
+  group_by(NEURO, time, logtime) %>%
+  summarize(avgmmse = mean(mmse)) %>%
+  ungroup()
+
 p1 <- data %>% mutate(residuals = resid(fm2),
                       fitted = fitted(fm2)) %>%
   ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, 
                            color = NEURO)) +
   geom_abline(data = sfm2avg, aes(slope = slope, intercept = intercept, 
                                   color = NEURO), 
-              size = 2, linetype = 2) +
+              size = 1.2, linetype = 2) +
+  # geom_line(data = sfm2avgsubject, aes(x = logtime, y = avgmmse, color = NEURO), 
+  #           size = 1.2, linetype = 3) +
   ylab('fitted value') + 
   theme_bw() +
   xlab("log(time)")
@@ -308,19 +325,21 @@ p2 <- data %>% mutate(residuals = resid(fm2),
                       fitted = fitted(fm2)) %>%
   ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
   geom_line(data = sfm2avgline, aes(x = time, y = fitted, color = NEURO), 
-            size = 2, linetype = 2) +
+            size = 1.2, linetype = 2) +
+  # geom_line(data = sfm2avgsubject, aes(x = time, y = avgmmse, color = NEURO), 
+  #           size = 1.2, linetype = 3) +
   ylab('fitted value') + 
   theme_bw()
 p <- plot_grid(p1 + theme(legend.position = "none"), 
                p2 + theme(legend.position = "none"), nrow = 1)
 legend <- get_legend(
-  p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
+  p1 + theme(legend.position = "bottom")
 )
-plot_grid(p,legend,rel_widths = c(3,1))
+plot_grid(p, legend, ncol = 1, rel_heights = c(1, .1))
 ```
 
 ```{r simplemixedscatter, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Scatterplot of the fitted intercept and slopes (log(time))."}
-data %>% group_by(id) %>%
+p <- data %>% group_by(id) %>%
   summarize(NEURO = first(NEURO)) %>%
   ungroup() %>%
   cbind(coef(fm2)$id) %>%
@@ -328,24 +347,48 @@ data %>% group_by(id) %>%
          slope = logtime + (NEURO == "neuro-psychiatric")*`logtime:NEUROneuro-psychiatric`) %>%
   ggplot() + geom_point(aes(x = intercept, y = slope, color = NEURO)) +
   theme_bw()
+p
 ```
 
-```{r simplemixedrandomdotplot, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
+```{r simplemixedrandomdotplot, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 8, fig.width = 12, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
 reff <- ranef(fm2, condVar = TRUE)
 dotplot(reff)
+# pv <- attr(reff$id, "postVar")
+# se <- pv[1, 1, ]
+# theIntercepts <- reff$id[, 1, drop=F]
+# theFrame <- cbind(theIntercepts, se)
+# names(theFrame)[1] <- "Intercept"
+# theFrame$Low <- with(theFrame, Intercept - 1.96 * se)
+# theFrame$High <- with(theFrame, Intercept + 1.96 * se)
+# theFrame$Variable <- rownames(theFrame)
+# frame <- data.frame(id = rep(test2$panel.args[[1]]$y, 2),
+#                     y = cbind(test2$panel.args[[1]]$x,test2$panel.args[[2]]$x),
+#                     type = rep(c("Intercept","Slope"), each = 59),
+#                     se =
+#                     )
+
 ```
 
 ```{r simplemixedrandom2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model. notice that there is very little variation in the slope."}
-reff$id %>%
+prandom <- reff$id %>%
   add_rownames(var = "id") %>%
   mutate(id = as.factor(id)) %>%
   left_join(distinct(data[,c('id','NEURO')])) %>%
   ggplot() + 
-  geom_point(aes(y = `(Intercept)`, x = logtime, color = NEURO)) +
-  theme_bw() + ylab("Intercept") + xlab("logtime")
+  geom_point(aes(x = `(Intercept)`, y = logtime, color = NEURO)) +
+  theme_bw() + xlab("Random effect intercept") + ylab("Random effect logtime (slope)")
+prandom
 ```
 
-
+```{r simplemixedpredictions, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "A shows the predicted slope and intercept for each of the subjects. B shows both random effects in the model. notice that there is very little variation in the slope.", }
+ptogether <- plot_grid(prandom + theme(legend.position = "none"), 
+               p + theme(legend.position = "none"), nrow = 1, 
+               labels = c('A', 'B'))
+legend <- get_legend(
+  p + theme(legend.position = "bottom")
+)
+plot_grid(ptogether, legend, ncol = 1, rel_heights = c(1, .1))
+```
 
 \clearpage
 
@@ -403,13 +446,21 @@ sfm2avgline <- data.frame(time = unique(data$time)) %>%
          `not neuro-psychiatric` = sfm2avg$intercept[1] + logtime * sfm2avg$slope[1],
          `neuro-psychiatric` = sfm2avg$intercept[2] + logtime * sfm2avg$slope[2]) %>%
   pivot_longer(cols = 3:4, names_to = "NEURO", values_to = "fitted") 
+sfm2avgsubject <- data %>% mutate(residuals = resid(fm2neuro),
+                                  fitted = fitted(fm2neuro)) %>%
+  group_by(NEURO, time, logtime) %>%
+  summarize(avgmmse = mean(mmse)) %>%
+  ungroup()
+
 p1 <- data %>% mutate(residuals = resid(fm2neuro),
                       fitted = fitted(fm2neuro)) %>%
   ggplot() + geom_line(aes(x = logtime, y = fitted, group = id, 
                            color = NEURO)) +
   geom_abline(data = sfm2avg, aes(slope = slope, intercept = intercept, 
                                   color = NEURO), 
-              size = 2, linetype = 2) +
+              size = 1.2, linetype = 2) +
+  # geom_line(data = sfm2avgsubject, aes(x = logtime, y = avgmmse, color = NEURO), 
+  #           size = 1.2, linetype = 3) +
   ylab('fitted value') + 
   theme_bw() +
   xlab("log(time)")
@@ -417,19 +468,21 @@ p2 <- data %>% mutate(residuals = resid(fm2neuro),
                       fitted = fitted(fm2neuro)) %>%
   ggplot() + geom_line(aes(x = time, y = fitted, group = id, color = NEURO)) +
   geom_line(data = sfm2avgline, aes(x = time, y = fitted, color = NEURO), 
-            size = 2, linetype = 2) +
+            size = 1.2, linetype = 2) +
+  #geom_line(data = sfm2avgsubject, aes(x = time, y = avgmmse, color = NEURO), 
+  #          size = 1.2, linetype = 3) +
   ylab('fitted value') + 
   theme_bw()
 p <- plot_grid(p1 + theme(legend.position = "none"), 
                p2 + theme(legend.position = "none"), nrow = 1)
 legend <- get_legend(
-  p1 + theme(legend.box.margin = margin(0, 0, 0, 12))
+  p1 + theme(legend.position = "bottom")
 )
-plot_grid(p,legend,rel_widths = c(3,1))
+plot_grid(p, legend, ncol = 1, rel_heights = c(1, .1))
 ```
 
 ```{r simplemixedscatterneuro, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Scatterplot of the fitted intercept and slopes (log(time))."}
-data %>% group_by(id) %>%
+p <- data %>% group_by(id) %>%
   summarize(NEURO = first(NEURO)) %>%
   ungroup() %>%
   cbind(coef(fm2neuro)$id) %>%
@@ -437,21 +490,33 @@ data %>% group_by(id) %>%
          slope = logtime + (NEURO == "neuro-psychiatric")*`logtime:NEUROneuro-psychiatric`) %>%
   ggplot() + geom_point(aes(x = intercept, y = slope, color = NEURO)) +
   theme_bw()
+p
 ```
 
-```{r simplemixedrandomdotplotneuro, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
+```{r simplemixedrandomdotplotneuro, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 8, fig.width = 12, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
 reff <- ranef(fm2neuro, condVar = TRUE)
 dotplot(reff)
 ```
 
 ```{r simplemixedrandomneuro, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
-reff$id %>%
+prandom <- reff$id %>%
   add_rownames(var = "id") %>%
   mutate(id = as.factor(id)) %>%
   left_join(distinct(data[,c('id','NEURO')])) %>%
   ggplot() +
-  geom_point(aes(y = `(Intercept)`, x = `NEUROneuro-psychiatric`, color = NEURO)) +
-  theme_bw() + ylab("Intercept") + xlab("NEURO")
+  geom_point(aes(x = `(Intercept)`, y = `NEUROneuro-psychiatric`, color = NEURO)) +
+  theme_bw() + xlab("Random effect intercept") + ylab("Random effect neuro")
+prandom
+```
+
+```{r simplemixedpredictionsneuro, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "A shows the predicted slope and intercept for each of the subjects. B shows both random effects in the model. notice that there is very little variation in the slope.", }
+ptogether <- plot_grid(prandom + theme(legend.position = "none"), 
+               p + theme(legend.position = "none"), nrow = 1, 
+               labels = c('A', 'B'))
+legend <- get_legend(
+  p + theme(legend.position = "bottom")
+)
+plot_grid(ptogether, legend, ncol = 1, rel_heights = c(1, .1))
 ```
 
 \clearpage
@@ -508,23 +573,23 @@ sfm3fullneuro <- summary(fm3fullneuro)
 #random intercept and slope
 sfm3full$coefficients #
 #we first remove the interactions with housing and logtime
-fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO + NEURO * logtime + age65 * logtime + housinginv + (1 + logtime|id), data = data) 
+fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO + NEURO * logtime + age65 * logtime + housinginv + (1 + NEURO|id), data = data) 
 AIC(fm3full) - AIC(fm3fulltest)#positive
 #summary(fm3fulltest)$coefficients #least significant is the interaction with time and Neuro
-fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 * logtime + housinginv + (1 + logtime|id), data = data) 
+fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 * logtime + housinginv + (1 + NEURO|id), data = data) 
 AIC(fm3full) - AIC(fm3fulltest)#more positive
 #summary(fm3fulltest)$coefficients #least significant is the interaction with time and age
-fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 + housinginv + (1 + logtime|id), data = data) 
+fm3fulltest <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 + housinginv + (1 + NEURO|id), data = data) 
 AIC(fm3full) - AIC(fm3fulltest)#more positive
 #summary(fm3fulltest)$coefficients #least significant is the interaction with time and age
-fm3reduced <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 + housinginv + (1 + logtime|id), data = data) 
+fm3reduced <- lmerTest::lmer(mmse ~ logtime + NEURO +  age65 + housinginv + (1 + NEURO|id), data = data) 
 library("cAIC4")
 cAIC(fm3full) 
-cAIC(fm3reduced)#mo
+#cAIC(fm3reduced)#mo
 sfm3reduced <- summary(fm3reduced)
 ```
 
-```{r mixedcovfittedreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Fitted values plotted against log(time) and time. Dashed, thicker lines are the predicted trends based on the fixed effects only, for an average-aged patient in each group.", fig.height = 10, fig.width = 7}
+```{r mixedcovfittedreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Fitted values plotted against log(time) and time. Dashed, thicker lines are the predicted trends based on the fixed effects only, for an average-aged patient in each group.", fig.height = 9, fig.width = 7}
 sfm3reducedavg <- expand_grid(housing = levels(data$housing), 
                        NEURO = levels(data$NEURO)) %>%
   mutate(intercept = sfm3reduced$coefficients[1,1] + 
@@ -566,14 +631,54 @@ legend <- get_legend(
 )
 plot_grid(p, legend, ncol = 1, rel_heights = c(1, .1))
 ```
+
+
+```{r simplemixedscatterreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Scatterplot of the fitted intercept and slopes (log(time))."}
+p <- data %>% filter(!is.na(housing)) %>% group_by(id) %>%
+  summarize(NEURO = first(NEURO)) %>%
+  ungroup() %>%
+  cbind(coef(fm3reduced)$id) %>%
+  mutate(intercept = `(Intercept)` + (NEURO == "neuro-psychiatric")*`NEUROneuro-psychiatric`,
+         slope = logtime ) %>%
+  ggplot() + geom_point(aes(x = intercept, y = slope, color = NEURO)) +
+  theme_bw()
+p
+```
+
+```{r simplemixedrandomdotplotreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.height = 8, fig.width = 12, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
+reff <- ranef(fm3reduced, condVar = TRUE)
+dotplot(reff)
+```
+
+```{r simplemixedrandomreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
+prandom <- reff$id %>%
+  add_rownames(var = "id") %>%
+  mutate(id = as.factor(id)) %>%
+  left_join(distinct(data[,c('id','NEURO')])) %>%
+  ggplot() +
+  geom_point(aes(x = `(Intercept)`, y = `NEUROneuro-psychiatric`, color = NEURO)) +
+  theme_bw() + xlab("Random effect intercept") + ylab("Random effect neuro")
+prandom
+```
+
+```{r simplemixedpredictionsreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "A shows the predicted slope and intercept for each of the subjects. B shows both random effects in the model. notice that there is very little variation in the slope.", }
+ptogether <- plot_grid(prandom + theme(legend.position = "none"), 
+               p + theme(legend.position = "none"), nrow = 1, 
+               labels = c('A', 'B'))
+legend <- get_legend(
+  p + theme(legend.position = "bottom")
+)
+plot_grid(ptogether, legend, ncol = 1, rel_heights = c(1, .1))
+```
+
 ## A model with a dichotomized dependent variable
 
 ### Median split
-Lastly, a model is tested where mmse is dichotomized using a median split; all mmse scores equal to or below the median (`r median(data$mmse)`) are cetagorized as "Low" and all mmse scores over `r median(data$mmse)` are categorized as "High". It should be noted that the literature warns against this technique as it is rarely justified from either a conceptual or statistical perspective [@maccallum2002practice].
+Lastly, a model is tested where mmse is dichotomized using a median split; all mmse scores equal to or below the median (`r median(data$mmse)`) are cetagorized as "Low" and all mmse scores over `r median(data$mmse)` are categorized as "High". It should be noted that the literature warns against this technique as it is rarely justified from either a conceptual or statistical perspective [@maccallum2002practice]. Unfortunately, the dichotomized model of SAS could not be replicated.
 
 ```{r mixeddictests, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-data$bmmse <- factor(as.factor(ifelse(data$mmse <= median(data$mmse),"Low","High")), levels = c("Low","High"))
-fm6 <- glmmTMB(bmmse ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + logtime*housinginv + (1 + logtime|id), 
+data$bmmsemedian <- factor(as.factor(ifelse(data$mmse <= median(data$mmse),"Abnormal","Normal")), levels = c("Normal","Abnormal"))
+fm6 <- glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + logtime*housinginv + (1 + NEURO|id), 
              data = data, family = binomial(link = "logit"), REML = TRUE) #In checkConv(attr(opt, "derivs"), opt$par, ctrl  #In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
   #Model failed to converge with max|grad| = 0.187143 (tol = 0.002, component 1)
 sfm6 <- summary(fm6)
@@ -585,39 +690,64 @@ sfm6$coefficients$cond %>% kable(caption = "Fixed effects for a model with rando
                             booktabs = TRUE, digits = 3)
 ```
 
-<!-- ```{r mixeddicvarcov, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE} -->
-<!-- sfm6$varcor[1]$id[1:2,] %>% kable(caption = "variance-coviarance matrix.", -->
-<!--                                   booktabs = TRUE, digits = 3) -->
-<!-- ``` -->
+```{r reducemodel, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
+#test probit or clogloglink
+AIC(fm6)
+AIC(glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + logtime*housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "probit"), REML = TRUE))#doesn't work
+AIC(glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + logtime*housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "cloglog"), REML = TRUE))#doesn't work
 
-<!-- ```{r mixeddicstddev, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE} -->
-<!-- varcor <- lapply(sfm6$varcor, attributes) -->
-<!-- varcor$id$stddev %>% kable(caption = "Standard deviations.", -->
-<!--                            booktabs = TRUE, digits = 3) -->
-<!-- ``` -->
+#reduce the model
+test <- glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #logtime and intercept is highest but we cannot remove these if the interactions are still there --> we first remoce interactions with housing
+summary(test)$coefficients$cond
+AIC(test)
+test <- glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #remove age and the interaction with slope
+summary(test)$coefficients$cond
+AIC(test)
 
-<!-- ```{r mixeddiccorrelation, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE} -->
-<!-- varcor$id$correlation %>% kable(caption = "Correlations.", -->
-<!--                                 booktabs = TRUE, digits = 3) -->
-<!-- ``` -->
+test <- glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + logtime*NEURO + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #remove housing
+summary(test)$coefficients$cond
+AIC(test)
 
-### Dichotomized at 25
-The maximum score for the MMSE is 30. A score of 25 or higher is classed as normal. If the score is below 24, the result is usually considered to be abnormal, indicating possible cognitive impairment.
+test <- glmmTMB(bmmsemedian ~ 1 + logtime + NEURO + age + housing + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #remove neuro
+summary(test)$coefficients$cond
+AIC(test)
+
+test <- glmmTMB(bmmsemedian ~ 1 +  NEURO +  (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #remove logtime
+summary(test)$coefficients$cond
+AIC(test)
 
 
-```{r mixeddictests2, include = FALSE, echo = FALSE, message = FALSE, warning = FALSE}
-data$bmmse <- factor(as.factor(ifelse(data$mmse <= 24,"abnormal","normal")), levels = c("abnormal","normal"))
-fm7 <- glmmTMB(bmmse ~ 1 + logtime + NEURO + logtime*NEURO + age65*logtime + logtime*housinginv + (1 + NEURO|id),
-               data = data, family = binomial(link = "logit")) #In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-#Model failed to converge with max|grad| = 0.428569 (tol = 0.002, component 1)
-sfm7 <- summary(fm7)
+#reduced model Charlotte
+test <- glmmTMB(bmmsemedian ~ 1 +  NEURO + age65 + housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit"), REML = TRUE) #remove logtime
+summary(test)$coefficients$cond
+testglmer <- glmer(bmmsemedian ~ 1 +  NEURO + age65 + housinginv + (1 + NEURO|id), 
+             data = data, family = binomial(link = "logit")) #remove logtime
+testpql <- MASS::glmmPQL(bmmsemedian ~ 1 +  NEURO + age65 + housinginv, random = ~ 1 + NEURO|id, 
+             data = data, family = binomial)
+# testbrm <- brms::brm(
+#   bmmsemedian ~ 1 +  NEURO + age65 + housinginv + (1 + NEURO|id), 
+#   family = "bernoulli",
+#   data = data, seed = 1234,
+#   silent = 2, refresh = 0,
+#   chains = 4L, cores = 4L, backend = "cmdstanr")
+# testmerlin <- merlin(
+#   model = 1*(bmmsemedian=="Abnormal") ~ 1 +  NEURO + age65 + housinginv + M1[id] * 1 + NEURO:M2[id] * 1, 
+#   family = "bernoulli",
+#   data = data, level = "id",
+#   covariance = "unstructured",
+#   family = "gaussian")
+
 ```
 
-In this model, nothing is significant. It seems we've indeed lost a lot of information by dichotomizing the dependent variable.
-```{r mixeddic2, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE}
-sfm7$coefficients$cond %>% kable(caption = "Fixed effects for a model with random intercept and slope, including age and housing, dichotomized dependent variable (split at 25).",
-                            booktabs = TRUE, digits = 3)
-```
+
 # Conclusion
  
 # Bibliography
