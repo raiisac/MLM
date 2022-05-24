@@ -635,13 +635,20 @@ plot_grid(p, legend, ncol = 1, rel_heights = c(1, .1))
 
 ```{r simplemixedscatterreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "Scatterplot of the fitted intercept and slopes (log(time))."}
 p <- data %>% filter(!is.na(housing)) %>% group_by(id) %>%
-  summarize(NEURO = first(NEURO)) %>%
+  summarize(NEURO = first(NEURO),
+            housing = first(housing),
+            age = first(age)) %>%
   ungroup() %>%
   cbind(coef(fm3reduced)$id) %>%
-  mutate(intercept = `(Intercept)` + (NEURO == "neuro-psychiatric")*`NEUROneuro-psychiatric`,
+  mutate(intercept = `(Intercept)` + 
+           (NEURO == "neuro-psychiatric")*`NEUROneuro-psychiatric` +
+           (housing == "alone")*housinginvalone + 
+           (housing == "with family or partner")*`housinginvwith family or partner` +
+           (age-65) * age65,
          slope = logtime ) %>%
   ggplot() + geom_point(aes(x = intercept, y = slope, color = NEURO)) +
-  theme_bw()
+  theme_bw() + facet_grid(rows = vars(housing)) +                                                                # Change font size
+  theme(strip.text.y = element_text(size = 6))
 p
 ```
 
@@ -668,7 +675,9 @@ ptogether <- plot_grid(prandom + theme(legend.position = "none"),
 legend <- get_legend(
   p + theme(legend.position = "bottom")
 )
-plot_grid(ptogether, legend, ncol = 1, rel_heights = c(1, .1))
+ptogether <- plot_grid(ptogether, legend, ncol = 1, rel_heights = c(1, .1))
+ptogether
+ggsave(ptogether, filename = "reducedmodelscatter.pdf")
 ```
 
 ## A model with a dichotomized dependent variable
