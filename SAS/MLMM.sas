@@ -9,7 +9,7 @@ libname MLMM "/home/u49934288/MLMM2";
 proc means data=MLMM.mmse N mean stddev min max median maxdec=4;
 run;
 
-/* Distribution of msse*/
+/* Histograms */
 proc univariate data=MLMM.mmse;
    histogram;
 run;
@@ -128,9 +128,17 @@ proc sgplot data=mlmm.mmse_samplenarrow noautolegend;
 run;
 
 /* Correlation within the dataset */
-proc corr data=mlmm.mmse;
+data mlmm.mmse_corr;
+	set mlmm.mmse;
+	if housing=1 then housing1=1;
+	else housing1=0;
+	if housing=2 then housing2=1;
+	else housing2=0;
+	if housing=3 then housing3=1;
+	else housing3=0;
+	keep NEURO mmse time age housing1 housing2 housing3;
 run;
-proc corr data=mlmm.mmse_wide;
+proc corr data=mlmm.mmse_corr;
 run;
 
 
@@ -271,7 +279,6 @@ proc mixed data=MLMM.mmse1;
 	random intercept /type=un subject=id group=neuro g gcorr solution;
 	ods exclude solutionr;
 run;
-
 /* t + neuro + age + housing significant */
 
 

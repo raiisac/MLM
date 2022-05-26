@@ -100,7 +100,7 @@ data %>% group_by(time) %>%
 data %>% ggplot() + geom_histogram(aes(x = mmse, fill = NEURO), 
                                   position = position_stack(reverse = TRUE),
                                   bins = 15) +
-  theme_bw() + ylab("Number of subjects") + xlab("mmse score")
+  theme_bw() + ylab("Number of measurements") + xlab("mmse score")
 ```
 
 
@@ -659,7 +659,7 @@ dotplot(reff)
 
 ```{r simplemixedrandomreduced, include = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.cap = "This shows both random effects in the model for each subject (y-axis). It is clear that there is very little variation in the slopes."}
 prandom <- reff$id %>%
-  add_rownames(var = "id") %>%
+  cbind(id = unique(data[complete.cases(data),'id'])) %>%
   mutate(id = as.factor(id)) %>%
   left_join(distinct(data[,c('id','NEURO')])) %>%
   ggplot() +
